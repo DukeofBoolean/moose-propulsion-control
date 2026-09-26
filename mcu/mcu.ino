@@ -65,93 +65,38 @@ void setup() {
 }
 
 void loop() {
-  
-  int current_distance = 20000;
-  getLidarData(&Lidar);       // Acquisition of LiDAR data
-  
-  if (Lidar.receiveComplete) {  // Process only if new data is received
-    current_distance = Lidar.distance;
-    Lidar.receiveComplete = false;  // Reset the flag after processing
-  }
+  getLidarData(&Lidar);
 
-  //8 bits are 1 byte
-  //1 char is 8 bits = 1 byte
-  //Can send max 8 bytes on the CAN network, so maximum of 8 chars
-  unsigned long current_time = millis();
-  if((current_time - previous_time >= sampling_interval)){
+  const unsigned long current_time = millis();
+  if (Lidar.receiveComplete && current_time - previous_time >= sampling_interval) {
+    const uint16_t distance_cm = (uint16_t)Lidar.distance;
+    Lidar.receiveComplete = false;
 
-     // Calculate speed
-    int time_elapsed = current_time - previous_time; // Time difference in milliseconds
-    int current_distance = Lidar.distance;
-    int speed = 0; // Speed in cm/s
-    int distance_change = previous_distance - current_distance;
-    if (time_elapsed > 0 && distance_change > 0) {
-      speed = distance_change * 1000 / time_elapsed; // Speed in cm/s
+    const unsigned long time_elapsed = current_time - previous_time;
+    const int32_t distance_change = (int32_t)previous_distance - distance_cm;
+    int32_t speed_cm_s = 0;
+    if (previous_time != 0 && time_elapsed > 0) {
+      speed_cm_s = distance_change * 1000L / (int32_t)time_elapsed;
     }
+    if (speed_cm_s > 32767) speed_cm_s = 32767;
+    if (speed_cm_s < -32768) speed_cm_s = -32768;
 
-    else{
-      speed = 0;
-    }
-
-    previous_distance = current_distance;
+    previous_distance = distance_cm;
     previous_time = current_time;
-    
-    Serial.print("Sending packet ... ");
-    CAN.beginPacket(0x12); // Begin sending a message from the node with address 0x12
 
-    bool leading_zero = true;
-
-    int thousands = current_distance / 1000;
-    int hundreds = (current_distance / 100) % 10;
-    int tens = (current_distance / 10) % 10;
-    int units = current_distance % 10;
-
-    if (thousands > 0) {
-        CAN.write(thousands + '0');
-        leading_zero = false;
-    }
-    
-    if (hundreds > 0 || !leading_zero) {
-        CAN.write(hundreds + '0');
-        leading_zero = false;
-    }
-    
-    if (tens > 0 || !leading_zero) {
-        CAN.write(tens + '0');
-        leading_zero = false;
-    }
-    
-    CAN.write(units + '0');  //Always write the units digit
-
-    CAN.write(' ');
-
-    leading_zero = true;
-
-    int speed_thousands = speed / 1000;
-    int speed_hundreds = (speed / 100) % 10;
-    int speed_tens = (speed / 10) % 10;
-    int speed_units = speed % 10;
-
-    if (speed_thousands > 0) {
-        CAN.write(speed_thousands + '0');
-        leading_zero = false;
-    }
-
-    if (speed_hundreds > 0 || !leading_zero) {
-        CAN.write(speed_hundreds + '0');
-        leading_zero = false;
-    }
-
-    if (speed_tens > 0 || !leading_zero) {
-        CAN.write(speed_tens + '0');
-        leading_zero = false;
-    }
-
-    CAN.write(speed_units + '0'); // Always send units digit
-    
+    // CAN ID 0x12, 4-byte payload: distance (uint16 cm), speed (int16 cm/s).
+    // Both signals use network byte order (most significant byte first).
+    const uint16_t speed_raw = (uint16_t)(int16_t)speed_cm_s;
+    CAN.beginPacket(0x12);
+    CAN.write((uint8_t)(distance_cm >> 8));
+    CAN.write((uint8_t)(distance_cm & 0xFF));
+    CAN.write((uint8_t)(speed_raw >> 8));
+    CAN.write((uint8_t)(speed_raw & 0xFF));
     CAN.endPacket();
-    Serial.println("done");
-  }
 
-  //delay(100); //Use delay if necessary
+    Serial.print("Sent distance [cm]: ");
+    Serial.print(distance_cm);
+    Serial.print(" speed [cm/s]: ");
+    Serial.println((int)speed_cm_s);
+  }
 }

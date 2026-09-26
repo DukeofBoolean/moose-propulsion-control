@@ -150,19 +150,27 @@ void localLidar() {
 void loop() {
   // Poll CAN packets
   int packetSize = CAN.parsePacket();
-  if (packetSize) {
-    char buf[16];
-    int n = 0;
-    while (CAN.available() && n < sizeof(buf) - 1) {
-      buf[n++] = (char)CAN.read();
+  if (packetSize > 0) {
+    const bool expected_frame = CAN.packetId() == 0x12 && packetSize == 4;
+    uint8_t payload[4];
+    int bytes_read = 0;
+    while (CAN.available()) {
+      int value = CAN.read();
+      if (bytes_read < (int)sizeof(payload)) {
+        payload[bytes_read] = (uint8_t)value;
+      }
+      bytes_read++;
     }
-    buf[n] = '\0';
 
-    char* sep = strchr(buf, ' ');
-    if (sep) {
-      *sep = '\0';
-      remote_distance = atoi(buf);
-      remote_speed = atoi(sep + 1);
+    if (expected_frame && bytes_read == 4) {
+      const uint16_t distance_cm = ((uint16_t)payload[0] << 8) | payload[1];
+      const uint16_t speed_raw = ((uint16_t)payload[2] << 8) | payload[3];
+      const int32_t signed_speed = speed_raw <= 32767
+          ? (int32_t)speed_raw
+          : (int32_t)speed_raw - 65536L;
+
+      remote_distance = (int)distance_cm;
+      remote_speed = (int)signed_speed;
       new_remote_data = true;
       lastUpdateTime = millis();
     }
