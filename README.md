@@ -28,6 +28,8 @@ minimal address-claim test profile, not a claim of complete J1939 conformance.
 For current PGN signal definitions, NAME messages, and command/state values,
 see `moose_propulsion.dbc` and `j1939_address.h` in each sketch directory.
 
+Use the free dbc editor to view or change the CAN database: https://www.csselectronics.com/pages/dbc-editor-can-bus-database
+
 `MCTL_DCU` command values are `0=HOLD`, `1=HOME`, `2=TO_MCU`, and `3=TO_PCU`.
 Program 1 is the only implemented drive profile. The PCU brakes and reports an
 endpoint after its lidar detects endpoint range and confirms near-zero speed
