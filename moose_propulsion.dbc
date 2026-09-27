@@ -34,11 +34,39 @@ BS_:
 
 BU_: DCU MCU PCU
 
-BO_ 18 LMSD_MCU: 4 MCU
- SG_ Distance : 7|16@0+ (1,0) [0|65535] "cm" PCU
- SG_ Speed : 23|16@0- (1,0) [-32768|32767] "cm/s" PCU
+BO_ 2566848674 LMSD_MCU: 8 MCU
+ SG_ Distance : 0|16@1+ (1,0) [0|65535] "cm" PCU
+ SG_ Speed : 16|16@1- (1,0) [-32768|32767] "cm/s" PCU
 
-CM_ BO_ 18 "MCU lidar measurement sent to the PCU. Standard frame ID 0x12. Payload uses a 16-bit distance followed by a 16-bit signed speed, both big-endian. Positive speed means range is decreasing (target approaching the MCU lidar).";
-CM_ BU_ DCU "Driver command unit. Add DCU frame definitions when their message IDs and signal layouts are specified.";
+BO_ 2364514720 MCTL_DCU: 8 DCU
+ SG_ Command : 0|8@1+ (1,0) [0|3] "" PCU
+ SG_ Program : 8|8@1+ (1,0) [0|255] "" PCU
+ SG_ Sequence : 16|8@1+ (1,0) [0|255] "" PCU
+
+BO_ 2566848929 MSTA_PCU: 8 PCU
+ SG_ State : 0|8@1+ (1,0) [0|7] "" DCU
+ SG_ Distance : 8|16@1+ (1,0) [0|65535] "cm" DCU
+ SG_ Speed : 24|16@1- (1,0) [-32768|32767] "cm/s" DCU
+
+BO_ 2565799840 AddressClaimed_DCU: 8 DCU
+ SG_ NAME : 0|64@1+ (1,0) [0|18446744073709551615] "" PCU,MCU
+
+BO_ 2565799841 AddressClaimed_PCU: 8 PCU
+ SG_ NAME : 0|64@1+ (1,0) [0|18446744073709551615] "" DCU,MCU
+
+BO_ 2565799842 AddressClaimed_MCU: 8 MCU
+ SG_ NAME : 0|64@1+ (1,0) [0|18446744073709551615] "" DCU,PCU
+
+CM_ BO_ 2566848674 "LMSD_MCU: proprietary broadcast PGN 0xFF00, source address 0xA2. Eight-byte J1939 extended frame. Distance and signed speed are little-endian; bytes 5-8 are 0xFF.";
+CM_ BO_ 2364514720 "MCTL_DCU: proprietary destination-specific PGN 0xEF00, DCU source address 0xA0 to PCU destination address 0xA1. Eight-byte J1939 extended frame; bytes 4-8 are 0xFF.";
+CM_ BO_ 2566848929 "MSTA_PCU: proprietary broadcast PGN 0xFF01, source address 0xA1. Eight-byte J1939 extended frame. Distance and signed speed are little-endian; bytes 6-8 are 0xFF.";
+CM_ BO_ 2565799840 "PGN 0xEE00 Address Claimed, source address 0xA0. NAME is a 64-bit little-endian value; its manufacturer code is a test placeholder.";
+CM_ BO_ 2565799841 "PGN 0xEE00 Address Claimed, source address 0xA1. NAME is a 64-bit little-endian value; its manufacturer code is a test placeholder.";
+CM_ BO_ 2565799842 "PGN 0xEE00 Address Claimed, source address 0xA2. NAME is a 64-bit little-endian value; its manufacturer code is a test placeholder.";
+CM_ BU_ DCU "Driver command unit keypad and LCD interface.";
 CM_ BU_ MCU "Measuring control unit lidar and CAN sender.";
 CM_ BU_ PCU "Propulsion control unit CAN receiver and motor controller.";
+
+VAL_ 2364514720 Command 0 "HOLD" 1 "HOME" 2 "TO_MCU" 3 "TO_PCU";
+VAL_ 2364514720 Program 1 "STANDARD";
+VAL_ 2566848929 State 0 "BOOT_WAIT" 1 "WAIT_FOR_LIDAR" 2 "HOMING" 3 "AT_HOME" 4 "TO_MCU" 5 "AT_MCU" 6 "TO_HOME" 7 "FAULT";

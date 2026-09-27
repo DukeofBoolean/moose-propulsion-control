@@ -1,5 +1,6 @@
 #include <CAN.h>
 #include <SPI.h>
+#include "j1939_address.h"
 
 typedef struct {
   int distance;
@@ -12,6 +13,11 @@ TF Lidar = {0, 0, 0, false};
 int previous_distance = 0;
 unsigned long previous_time = 0;
 const unsigned long sampling_interval = 100; // Sampling interval in milliseconds
+
+// Provisional local addresses for this three-node test network.
+const uint8_t J1939_SA_MCU = 0xA2;
+const uint32_t J1939_PGN_LMSD_MCU = 0x00FF00;
+J1939AddressClaim j1939Node;
 
 void getLidarData(TF* lidar) 
 {
@@ -37,10 +43,14 @@ void getLidarData(TF* lidar)
       }
       if (rx[8] == (checksum % 256)) 
       {
-          lidar->distance = rx[2] + rx[3] * 256;
-          lidar->strength = rx[4] + rx[5] * 256;
-          lidar->temp = (rx[6] + rx[7] * 256) / 8 - 256;
-          lidar->receiveComplete = true;
+          const uint16_t distance = rx[2] + (uint16_t)rx[3] * 256;
+          const uint16_t strength = rx[4] + (uint16_t)rx[5] * 256;
+          if (distance > 0 && strength > 0) {
+            lidar->distance = distance;
+            lidar->strength = strength;
+            lidar->temp = (rx[6] + rx[7] * 256) / 8 - 256;
+            lidar->receiveComplete = true;
+          }
       }
       i = 0;
     } 
@@ -62,9 +72,31 @@ void setup() {
     Serial.println("Starting CAN failed!");
     while (1);
   }
+
+  // Identity 3 is unique within this project. The manufacturer field in this
+  // test NAME is provisional; replace it with an SAE-assigned code later.
+  j1939Node.begin(J1939_SA_MCU, j1939MakeTestName(3));
+}
+
+void pollJ1939Network() {
+  const int packetSize = CAN.parsePacket();
+  if (packetSize <= 0) return;
+
+  const uint32_t id = (uint32_t)CAN.packetId();
+  const bool extended = CAN.packetExtended();
+  uint8_t payload[8];
+  int bytesRead = 0;
+  while (CAN.available()) {
+    const int value = CAN.read();
+    if (bytesRead < (int)sizeof(payload)) payload[bytesRead] = (uint8_t)value;
+    bytesRead++;
+  }
+  j1939Node.handleFrame(id, extended, payload, bytesRead);
 }
 
 void loop() {
+  pollJ1939Network();
+  j1939Node.update();
   getLidarData(&Lidar);
 
   const unsigned long current_time = millis();
@@ -84,15 +116,23 @@ void loop() {
     previous_distance = distance_cm;
     previous_time = current_time;
 
-    // CAN ID 0x12, 4-byte payload: distance (uint16 cm), speed (int16 cm/s).
-    // Both signals use network byte order (most significant byte first).
+    // PGN 0xFF00, 8-byte J1939 frame. Multi-byte signals are little-endian;
+    // unused bytes are set to 0xFF (not available).
     const uint16_t speed_raw = (uint16_t)(int16_t)speed_cm_s;
-    CAN.beginPacket(0x12);
-    CAN.write((uint8_t)(distance_cm >> 8));
-    CAN.write((uint8_t)(distance_cm & 0xFF));
-    CAN.write((uint8_t)(speed_raw >> 8));
-    CAN.write((uint8_t)(speed_raw & 0xFF));
-    CAN.endPacket();
+    if (j1939Node.mayTransmitApplication()) {
+      const uint32_t id = j1939MakeId(6, J1939_PGN_LMSD_MCU,
+                                      J1939_GLOBAL_ADDRESS, j1939Node.address());
+      CAN.beginExtendedPacket(id);
+      CAN.write((uint8_t)(distance_cm & 0xFF));
+      CAN.write((uint8_t)(distance_cm >> 8));
+      CAN.write((uint8_t)(speed_raw & 0xFF));
+      CAN.write((uint8_t)(speed_raw >> 8));
+      CAN.write(0xFF);
+      CAN.write(0xFF);
+      CAN.write(0xFF);
+      CAN.write(0xFF);
+      CAN.endPacket();
+    }
 
     Serial.print("Sent distance [cm]: ");
     Serial.print(distance_cm);
